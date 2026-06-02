@@ -6,6 +6,35 @@ import torch.nn as nn
 
 
 class InputEmbedding(nn.Module):
+
+    def __init__(
+        self,
+        vocab_size: int,
+        emb_dim: int,
+        context_length: int,
+        drop_rate: float = 0.1,
+    ):
+        super().__init__()
+        self.emb_dim = emb_dim
+        self.context_length = context_length
+
+        self.token_embedding = nn.Embedding(vocab_size, emb_dim)
+        self.position_embedding = nn.Embedding(context_length, emb_dim)
+        self.dropout = nn.Dropout(drop_rate)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch_size, seq_len = x.shape
+
+        token_emb = self.token_embedding(x)
+
+        positions = torch.arange(seq_len, device=x.device)
+        pos_emb = self.position_embedding(positions)
+
+        out = token_emb + pos_emb
+        out = self.dropout(out)
+
+        return out
+
     """
     token ID를 Transformer 입력 벡터로 바꿉니다.
 

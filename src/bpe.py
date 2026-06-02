@@ -200,6 +200,7 @@ class BPETokenizer:
         # 기본토큰일시에는 결과값에 넣고 아닐시에는 다시 분해를 진행하면 왼쪽부터 다시 재귀를 한다
 
         for token_id in ids:
+
             if skip_special and token_id in SPECIAL_IDS.values():
                 continue
 

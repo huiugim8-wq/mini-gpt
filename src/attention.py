@@ -45,11 +45,57 @@ class MultiHeadAttention(nn.Module):
         return_attention_weights: bool = False,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         """
-        TODO: multi-head attention forward를 구현합니다.
+        multi-head attention forward를 구현합니다.
 
         Args:
             x: (batch_size, seq_len, d_model)
             causal_mask: True이면 미래 위치를 볼 수 없게 mask 처리
             return_attention_weights: True이면 attention weight도 함께 반환
         """
-        raise NotImplementedError("MultiHeadAttention.forward를 구현하세요.")
+        batch_size, seq_len, d_model = x.shape
+        q: torch.Tensor = self.q_proj(x)  # (batch_size, seq_len, d_model)
+        k: torch.Tensor = self.k_proj(x)
+        v: torch.Tensor = self.v_proj(x)
+
+        k = k.view(batch_size, seq_len, self.n_heads, self.head_dim)
+        v = v.view(batch_size, seq_len, self.n_heads, self.head_dim)
+        q = q.view(batch_size, seq_len, self.n_heads, self.head_dim)
+
+        # (batch_size, seq_len, self.n_heads, self.head_dim) -> (batch_size, self.n_heads, seq_len, self.head_dim)
+        k = k.transpose(1, 2)
+        q = q.transpose(1, 2)
+        v = v.transpose(1, 2)
+
+        attn_scores = q @ k.transpose(
+            -2, -1
+        )  # t.transpose(-2, -1) == t.transpose(2, 3) # 마지막 두 차원을 사용한다는 의미이다.
+        # '@'는 마지막 두 차원에 대해 행렬곱한다. 앞 차원들은 batch 차원으로 자동 정리
+        """
+        즉, 실제 의미는:
+        for b in range(B):
+            for h in range(H):
+                result[b, h] = q[b, h] @ k_t[b, h]
+        """
+
+        # masking
+        if causal_mask:
+            mask_bool = torch.triu(
+                torch.ones(seq_len, seq_len, device=x.device), diagonal=1
+            ).bool()
+            attn_scores.masked_fill_(
+                mask_bool, -torch.inf
+            )  # inplace function. use masked_fill(...) for non-inplace.
+
+        # softmax with scaling
+        attn_weights = torch.softmax(attn_scores / k.shape[-1] ** 0.5, dim=-1)
+        attn_weights = self.dropout(attn_weights)
+
+        # 문맥벡터 만들기.
+        context_vec = (attn_weights @ v).transpose(1, 2)
+
+        context_vec = context_vec.contiguous().view(batch_size, seq_len, d_model)
+        context_vec = self.out_proj(context_vec)
+        if return_attention_weights:
+            return context_vec, attn_weights
+        else:
+            return context_vec
